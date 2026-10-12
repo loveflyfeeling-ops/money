@@ -180,8 +180,17 @@ details.all summary{cursor:pointer;color:var(--brass);font-size:13px}
 .btn.line{background:var(--surface);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line);font-weight:500}
 
 .hist{display:flex;flex-direction:column;border-top:1px solid var(--line)}
-.hrow{display:grid;grid-template-columns:8.5em minmax(0,1fr) auto auto;gap:12px;align-items:center;padding:9px 4px;border-bottom:1px solid var(--line);cursor:pointer;background:none;border-left:0;border-right:0;border-top:0;text-align:left;width:100%}
-.hrow:hover{background:var(--surface)}
+.hitem{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;border-bottom:1px solid var(--line)}
+.hitem:hover{background:var(--surface)}
+.hrow{display:grid;grid-template-columns:8.5em minmax(0,1fr) auto auto;gap:12px;align-items:center;padding:9px 4px;cursor:pointer;background:none;border:0;text-align:left;width:100%;min-width:0}
+.hdel{background:none;border:1px solid var(--line);border-radius:6px;padding:3px 10px;font-size:12px;color:var(--muted);cursor:pointer;white-space:nowrap;margin-right:4px}
+.hdel:hover{border-color:var(--bad);color:var(--bad)}
+.hdel.armed{background:var(--bad);border-color:var(--bad);color:var(--surface);font-weight:700}
+.hbtn{margin-left:12px;background:none;border:1px solid var(--line);border-radius:6px;padding:3px 12px;font-size:12px;color:var(--muted);cursor:pointer}
+.hbtn:hover{border-color:var(--bad);color:var(--bad)}
+.hconfirm{display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:var(--hl);border:1px solid var(--line);border-radius:8px;padding:10px 14px;font-size:14px}
+.hconfirm .yes{background:var(--bad);color:var(--surface);border:0;border-radius:6px;padding:4px 14px;font-weight:700;cursor:pointer}
+.hconfirm .no{background:none;border:1px solid var(--line);border-radius:6px;padding:4px 14px;cursor:pointer;color:var(--ink)}
 .hrow .t{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
 .hrow .qn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hrow .gg{font-family:var(--f-display);font-size:13px}
@@ -254,7 +263,8 @@ details.all summary{cursor:pointer;color:var(--brass);font-size:13px}
   </section>
 
   <section class="step" id="s5">
-    <div class="step-h"><h2>起卦紀錄</h2><span class="hint">只存在這台裝置的瀏覽器</span></div>
+    <div class="step-h"><h2>起卦紀錄</h2><span class="hint">只存在這台裝置的瀏覽器<button class="hbtn" id="hclear" hidden>清除全部</button></span></div>
+    <div class="hconfirm" id="hconfirm" hidden><span id="hcmsg">確定清除全部紀錄？刪除後無法復原。</span><button class="yes" id="hyes">全部清除</button><button class="no" id="hno">取消</button></div>
     <div class="hist" id="hist"></div>
   </section>
 
@@ -693,10 +703,21 @@ function showReading(rec,sample){
 }
 function renderHist(){
   const h=store.get('jqg.hist',[]);
+  $('#hclear').hidden=!h.length; $('#hconfirm').hidden=true;
   if(!h.length){$('#hist').innerHTML='<p class="muted" style="padding:12px 4px">還沒有紀錄。完成第一次起卦後，結果會列在這裡，點一下可重新查看。</p>';return}
-  $('#hist').innerHTML=h.map((r,i)=>{try{const R=reading(r.v,r.dt,r.q);return`<button class="hrow ${R.GR[1]}" data-i="${i}"><span class="t">${r.dt.y}/${pad(r.dt.m)}/${pad(r.dt.d)} ${pad(r.dt.h)}:${pad(r.dt.mi)}</span><span class="qn">${R.q.name}</span><span class="gg">${R.g.full}${R.g2?' → '+R.g2.full:''}</span><span class="gd">${R.GR[0]}</span></button>`}catch(e){return''}}).join('');
+  $('#hist').innerHTML=h.map((r,i)=>{try{const R=reading(r.v,r.dt,r.q);return`<div class="hitem ${R.GR[1]}"><button class="hrow" data-i="${i}"><span class="t">${r.dt.y}/${pad(r.dt.m)}/${pad(r.dt.d)} ${pad(r.dt.h)}:${pad(r.dt.mi)}</span><span class="qn">${R.q.name}</span><span class="gg">${R.g.full}${R.g2?' → '+R.g2.full:''}</span><span class="gd">${R.GR[0]}</span></button><button class="hdel" data-del="${i}" aria-label="刪除這筆紀錄">刪除</button></div>`}catch(e){return''}}).join('');
 }
-$('#hist').addEventListener('click',e=>{const b=e.target.closest('.hrow');if(!b)return;const r=store.get('jqg.hist',[])[+b.dataset.i];if(r){showReading(r,false);$('#s4').scrollIntoView({block:'start'})}});
+let armTimer=null;
+$('#hclear').onclick=()=>{const n=store.get('jqg.hist',[]).length;$('#hcmsg').textContent=`確定清除全部 ${n} 筆紀錄？刪除後無法復原。`;$('#hconfirm').hidden=false;$('#hno').focus()};
+$('#hno').onclick=()=>{$('#hconfirm').hidden=true};
+$('#hyes').onclick=()=>{store.set('jqg.hist',[]);renderHist()};
+$('#hist').addEventListener('click',e=>{
+  const d=e.target.closest('.hdel');
+  if(d){clearTimeout(armTimer);
+    if(!d.classList.contains('armed')){document.querySelectorAll('.hdel.armed').forEach(x=>{x.classList.remove('armed');x.textContent='刪除'});
+      d.classList.add('armed');d.textContent='確定刪除';armTimer=setTimeout(()=>{d.classList.remove('armed');d.textContent='刪除'},3000);return}
+    const h=store.get('jqg.hist',[]);h.splice(+d.dataset.del,1);store.set('jqg.hist',h);renderHist();return}
+  const b=e.target.closest('.hrow');if(!b)return;const r=store.get('jqg.hist',[])[+b.dataset.i];if(r){showReading(r,false);$('#s4').scrollIntoView({block:'start'})}});
 
 /* 初始化 */
 (function init(){
